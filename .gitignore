@@ -1,0 +1,37 @@
+dist/
+node_modules/
+
+# Dependencies
+
+# Builds
+/dist/
+/.next/
+/.output/
+/build/
+/coverage/
+/tmp/
+/.turbo/
+/.angular/
+client/.angular/
+server/**/*.js
+./dist/
+
+uploads
+# Env & local config
+.env
+.env.*
+.npmrc
+*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/

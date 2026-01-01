@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  gender    String?
+  phone     String?
+  orders    Order[]
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id            String   @id @default(uuid())
+  type          ProductType
+  basePrice     Float
+  frontImageUrl String?
+  backImageUrl  String?
+  orders        Order[]
+}
+
+model Design {
+  id       String   @id @default(uuid())
+  source   DesignSource
+  prompt   String?
+  imageUrl String
+  elements Json
+  orderId  String?
+  order    Order?   @relation(fields: [orderId], references: [id])
+}
+
+model Order {
+  id           String   @id @default(uuid())
+  number       Int      @default(autoincrement())
+  phoneNumber  String?
+  size         String?
+  color        String?
+  user         User     @relation(fields: [userId], references: [id])
+  userId       String
+  product      Product  @relation(fields: [productId], references: [id])
+  productId    String
+  designs      Design[]
+  finalImages  FinalOrderImage[]
+  totalAmount  Float
+  status       OrderStatus @default(draft)
+  createdAt    DateTime @default(now())
+}
+
+model FinalOrderImage {
+  id        String        @id @default(uuid())
+  order     Order         @relation(fields: [orderId], references: [id])
+  orderId   String
+  side      SnapshotSide
+  imageUrl  String
+  createdAt DateTime      @default(now())
+}
+
+enum ProductType {
+  t_shirt
+  hoodie
+}
+
+enum DesignSource {
+  ai
+  upload
+}
+
+enum OrderStatus {
+  draft
+  pending
+  completed
+}
+
+enum SnapshotSide {
+  front
+  back
+}
