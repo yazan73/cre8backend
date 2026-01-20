@@ -9,6 +9,7 @@ import { AiService } from '../ai/ai.service';
 import { UploadService } from '../upload/upload.service';
 import { ConfirmOrderDto } from './dto/confirm-order.dto';
 import { ImageSize } from '../ai/image-size.enum';
+import { CreateDesignDto } from './dto/create-design.dto';
 
 @Injectable()
 export class OrdersService {
@@ -81,6 +82,47 @@ export class OrdersService {
     return order.designs;
   }
 
+  async createDesign(
+    userId: string,
+    orderId: string,
+    dto: CreateDesignDto,
+    file?: Express.Multer.File,
+  ) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.userId !== userId) throw new BadRequestException('Not allowed');
+
+    let imageUrl: string | undefined;
+    let source: 'ai' | 'upload';
+    const prompt = dto.prompt;
+
+    if (dto.prompt) {
+      source = 'ai';
+      const generated = await this.aiService.generateImage(dto.prompt, dto?.size ?? ImageSize.S1024);
+      imageUrl = await this.uploadService.saveDesign({
+        buffer: generated?.buffer as any,
+        originalname: generated?.filename,
+      });
+    } else if (file) {
+      source = 'upload';
+      imageUrl = await this.uploadService.saveDesign(file);
+    } else {
+      throw new BadRequestException('Provide a prompt or upload a file');
+    }
+
+    return this.prisma.design.create({
+      data: {
+        source,
+        prompt,
+        imageUrl: imageUrl || '',
+        elements: {},
+        orderId,
+      },
+    });
+  }
+
   async confirm(
     userId: string,
     orderId: string,
@@ -106,6 +148,12 @@ export class OrdersService {
       backFile ? this.uploadService.saveDesign(backFile) : dto.backSnapshotUrl,
     ]);
 
+    const extraFiles = [...designFiles, ...textFiles];
+    const extraFileUrls =
+      extraFiles.length > 0
+        ? await Promise.all(extraFiles.map((file) => this.uploadService.saveDesign(file)))
+        : [];
+
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.order.update({
         where: { id: orderId },
@@ -121,42 +169,28 @@ export class OrdersService {
         },
       });
 
-      const finalImagesCreate = [];
+      const finalImagesData = [];
       if (frontUrl) {
-        finalImagesCreate.push(
-          tx.finalOrderImage.create({
-            data: { orderId, side: 'front', imageUrl: frontUrl },
-          }),
-        );
+        finalImagesData.push({ orderId, side: 'front' as const, imageUrl: frontUrl });
       }
       if (backUrl) {
-        finalImagesCreate.push(
-          tx.finalOrderImage.create({
-            data: { orderId, side: 'back', imageUrl: backUrl },
-          }),
-        );
+        finalImagesData.push({ orderId, side: 'back' as const, imageUrl: backUrl });
       }
-      if (finalImagesCreate.length) {
-        await Promise.all(finalImagesCreate);
+      if (finalImagesData.length) {
+        await tx.finalOrderImage.createMany({ data: finalImagesData });
       }
 
       // Persist additional uploaded designs/text assets as design records
-      const extraFiles = [...designFiles, ...textFiles];
-      if (extraFiles.length) {
-        const urls = await Promise.all(extraFiles.map((file) => this.uploadService.saveDesign(file)));
-        await Promise.all(
-          urls.map((url) =>
-            tx.design.create({
-              data: {
-                source: 'upload',
-                prompt: null,
-                imageUrl: url,
-                elements: {},
-                orderId,
-              },
-            }),
-          ),
-        );
+      if (extraFileUrls.length) {
+        await tx.design.createMany({
+          data: extraFileUrls.map((url) => ({
+            source: 'upload',
+            prompt: null,
+            imageUrl: url,
+            elements: {},
+            orderId,
+          })),
+        });
       }
 
       return updated;

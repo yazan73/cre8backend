@@ -15,6 +15,7 @@ import * as multer from 'multer';
 import type { Express } from 'express';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ConfirmOrderDto } from './dto/confirm-order.dto';
+import { CreateDesignDto } from './dto/create-design.dto';
 import { OrdersService } from './orders.service';
 
 const allowedExt = /jpeg|jpg|png|webp|svg/;
@@ -52,6 +53,23 @@ export class OrdersController {
   @Get(':id/designs')
   async getDesigns(@Req() req: any, @Param('id') id: string) {
     return this.ordersService.findDesignsByOrder(req.user.id, id);
+  }
+
+  @Post(':id/designs')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: multer.memoryStorage(),
+      fileFilter,
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async createDesign(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: CreateDesignDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.ordersService.createDesign(req.user.id, id, dto, file);
   }
 
   @Post(':id/confirm')
